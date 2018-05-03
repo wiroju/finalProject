@@ -2,8 +2,13 @@ import com.ibm.watson.developer_cloud.natural_language_understanding.v1.NaturalL
 import com.ibm.watson.developer_cloud.natural_language_understanding.v1.model.*;
 
 import javax.swing.*;
-import java.util.ArrayList;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.util.*;
+import java.io.File;
 import java.util.List;
+import javax.imageio.*;
 
 public class CogArt extends JFrame {
 
@@ -84,7 +89,19 @@ public class CogArt extends JFrame {
                 + " Anyway, we delivered the bomb.";
 
         AnalysisResults response = textAnalysis(text);
-        processResults(response);
+        ArrayList<keyScores> keyEmotions =  processResults(response);
+
+        double sentiment = response.getSentiment().getDocument().getScore();
+        double scaleSentiment = (sentiment+1)*112.5;
+        int sentimentRGB = (int)scaleSentiment;
+
+        documentResults results = new documentResults(sentiment, sentimentRGB, keyEmotions);
+
+        try {
+            drawImage(results);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static AnalysisResults textAnalysis(String inputText) {
@@ -95,9 +112,12 @@ public class CogArt extends JFrame {
         );
 
         EntitiesOptions entitiesOptions = new EntitiesOptions.Builder()
-                .emotion(true)
-                .sentiment(true)
+                .emotion(false)
+                .sentiment(false)
                 .limit(2)
+                .build();
+
+        SentimentOptions sentiment = new SentimentOptions.Builder()
                 .build();
 
         KeywordsOptions keywordsOptions = new KeywordsOptions.Builder()
@@ -107,6 +127,7 @@ public class CogArt extends JFrame {
                 .build();
 
         Features features = new Features.Builder()
+                .sentiment(sentiment)
                 .entities(entitiesOptions)
                 .keywords(keywordsOptions)
                 .build();
@@ -123,16 +144,21 @@ public class CogArt extends JFrame {
         return response;
     }
 
-    public static void processResults(AnalysisResults response) {
+    public static ArrayList processResults(AnalysisResults response) {
 
         List<KeywordsResult> keywordList = response.getKeywords();
 
-        ArrayList<result> resultArrayList = new ArrayList<>();
+        ArrayList<keyScores> resultArrayList = new ArrayList<>();
 
         for (int i = 0; i < KEYWORDS; i++) {
 
             String key;
             double relevance = keywordList.get(i).getRelevance();
+            double scaleRelevance = relevance*100;
+            int intRelevance = (int)scaleRelevance;
+
+            //System.out.println(intRelevance);
+
             emotion emotion;
             double[] score = new double[5];
 
@@ -145,17 +171,19 @@ public class CogArt extends JFrame {
 
             emotion = processEmotion(score);
 
-            resultArrayList.add(new result(key, relevance, emotion));
+            resultArrayList.add(new keyScores(key, relevance, intRelevance, emotion));
         }
+
+        return resultArrayList;
     }
 
     public static emotion processEmotion(double[] scores) {
         String topEmotion;
-        String colour;
+        Color colour;
         int emotion = 0;
         double highestScore = scores[0];
         topEmotion = "anger";
-        colour = "";
+        colour = null;
 
         for (int i = 0; i < EMOTIONS; i++) {
             if (scores[i] > highestScore) {
@@ -169,33 +197,65 @@ public class CogArt extends JFrame {
         switch (emotion) {
             case 0:
                 topEmotion = "anger";
-                colour = "red";
+                colour = Color.red;
                 break;
 
             case 1:
                 topEmotion = "disgust";
-                colour = "green";
+                colour = Color.green;
                 break;
 
             case 2:
                 topEmotion = "fear";
-                colour = "purple";
+                colour = Color.magenta;
                 break;
 
             case 3:
                 topEmotion = "joy";
-                colour = "yellow";
+                colour = Color.yellow;
                 break;
 
             case 4:
                 topEmotion = "sadness";
-                colour = "blue";
+                colour = Color.blue;
                 break;
         }
 
-        System.out.println(topEmotion + " -> " + colour);
+        //System.out.println(topEmotion + " -> " + colour);
 
         return new emotion(topEmotion,colour);
+    }
+
+    public static void drawImage(documentResults processedResponse) throws IOException {
+
+        int sentimentRGB = processedResponse.getSentimentRGB();
+        ArrayList<keyScores> keywords = processedResponse.getKeywordsList();
+        String word=null;
+
+        Color background = new Color(sentimentRGB,sentimentRGB,sentimentRGB);
+
+        BufferedImage wordCloud = new BufferedImage(1280,720,BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphic = wordCloud.createGraphics();
+        graphic.setColor(background);
+        graphic.fillRect(0,0,1280,720);
+
+        for (int i = 0;i<keywords.size();i++){
+
+            Color colour = keywords.get(i).emotionValues.getColourToUse();
+            word = keywords.get(i).keyword.toString();
+            System.out.println(word);
+            int intRelevance = keywords.get(i).getIntRelevance();
+            System.out.println(intRelevance);
+
+            graphic.setColor(colour);
+            graphic.setFont(new Font("ARIAL",Font.LAYOUT_LEFT_TO_RIGHT,intRelevance));
+            graphic.drawString(word,180,180);
+        }
+
+        ImageIO.write(wordCloud, "jpg", new File(
+                "D:/Work/Year_3/Project/java/src/main/resources/generatedImages/cloud.jpg"));
+
+        System.out.println("Image Created");
     }
 
 }
